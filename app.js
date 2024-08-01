@@ -170,26 +170,76 @@ async function createNewToken() {
         });
 }
 createNewToken()
+function extractLastImageUrl(dataArray) {
+    // Initialize an empty array to store the last URLs
+    const urls = [];
+  
+    // Iterate through the dataArray
+    dataArray.forEach(data => {
+      if (Array.isArray(data.content)) {
+        // Find the last item with type 'image_url'
+        const lastImageUrl = data.content
+          .reverse()
+          .find(item => item.type === 'image_url' && item.image_url && item.image_url.url);
+  
+        // If found, push the URL to the urls array
+        if (lastImageUrl) {
+          urls.push(lastImageUrl.image_url.url);
+        }
+      }
+    });
+  
+    return urls;
+  }
+  function extractTextContent(dataArray) {
+    // Initialize an empty array to store the new objects
+    const newArray = [];
+  
+    // Iterate through the dataArray
+    dataArray.forEach(data => {
+      // Initialize a new object with the same role
+      const newObject = { role: data.role, content: '' };
+  
+      // Check if content is an array
+      if (Array.isArray(data.content)) {
+        // Find the item with type 'text'
+        const textItem = data.content.find(item => item.type === 'text' && item.text);
+  
+        // If found, set the content to the text value
+        if (textItem) {
+          newObject.content = textItem.text;
+        }
+      } else {
+        // If content is not an array, copy the original content
+        newObject.content = data.content;
+      }
+  
+      // Push the new object to the newArray
+      newArray.push(newObject);
+    });
+  
+    return newArray;
+  }
 // 开始处理数据
 app.post("/v1/chat/completions", async (req, res) => {
     let databody = req.body;
+    let imagesa = extractLastImageUrl(databody.messages)
+    databody.messages = extractTextContent(databody.messages)
     let index = 0
     if(accesstoken == "" || indexaccess >= 420) {
         await createNewToken()
         indexaccess = 0
     }
     databody.messages.forEach(element => {
-        if (element && element != "" && element != undefined) {
+        if (element && element != "" && element != undefined && !databody.model.includes('vision')) {
             index += encode(JSON.stringify(element.content)).length;
         }
     });
     let model = "openai/gpt-3.5-turbo"
     if(databody.model == "gpt-4o" || databody.model == "gpt-4o-2024-05-13") {
-        model = "openai/gpt-4o"
-        indexaccess = indexaccess + 15
+        model = "openai/gpt-4o-mini"
     }else if(databody.model.includes("gpt-4") && !databody.model.includes("4o")) {
-        model = "openai/gpt-4-1106-preview"
-        indexaccess = indexaccess + 15
+        model = "openai/gpt-4o-mini"
     }else if(databody.model.includes("opus")) {
         model = "anthropic/claude-3-opus"
         indexaccess = indexaccess + 30
@@ -210,8 +260,8 @@ app.post("/v1/chat/completions", async (req, res) => {
             "Please strictly follow your default identity to answer user questions. The identity you assume is: " +
             firstSystemContent;
     }
-    let question = `system: You need to answer user questions, no need to precede the answer with assistant. ${systemcontent} \n ${question1}`;
-    const proxyUrl = 'http://ttBJnZAmxaCs6BO:bsDtTBWiEF8Kpe5@213.139.68.26:42465';
+    let question = `system: You need to answer user questions, no need to precede the answer with assistant,The language of the reply is determined according to the language of the user's question. ${systemcontent} \n ${question1}`;
+    const proxyUrl = 'http://lC81fjl9SvCKDtj:JqMKe49mbzHchxs@103.229.116.121:45377';
     // 创建HTTPS代理代理
     const proxyAgent = new HttpsProxyAgent(proxyUrl);
     const options = {
@@ -221,11 +271,12 @@ app.post("/v1/chat/completions", async (req, res) => {
         headers: {
             // "Cookie":"__cf_bm=X_hzQIZFIOtRcCxwKO7.AUrS1HKCnVb5roLcfjKIFhc-1716785138-1.0.1.1-KaV6q63f0rFn.yTFEQJpdkO_7fsscGlYPld0rs4H_m0VcPfVku3UxZczKRgJbZGFKUmqUVRZB2eurh13pvidlw",
             "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0",
+                'Content-Type': 'application/json; charset=utf-8'
         },
-        agent: proxyAgent,
+        timeout: 15000,
         json: {
-            "visionImages": [],
+            "visionImages": imagesa,
             "query": question,
             "workspaceId": accesstoken,
             "regenerate": false,
@@ -254,7 +305,7 @@ app.post("/v1/chat/completions", async (req, res) => {
     const proxyReq = request(options);
     proxyReq.on("response", function (response) {
         response.on("data", (chunk) => {
-            let message = `${chunk.toString()}`;
+            let message = `${chunk.toString('utf8')}`;
              if (message.includes("teamai")) {
                 return
             }
